@@ -2,6 +2,13 @@ const User = require("../models/user");
 const { ctrlWrapper, HttpError } = require("../helpers");
 const bcrypt = require("bcrypt");
 const jwt = require("jsonwebtoken");
+const gravatar = require("gravatar");
+const fs = require("fs/promises");
+const path = require("path");
+const jimp = require("jimp");
+
+const avatarsDir = path.join(__dirname, "..", "public", "avatars");
+const avatarExtensions = ["jpg", "jpeg", "png", "gif", "bmp", "tiff"];
 
 const { SECRET_KEY } = process.env;
 
@@ -12,11 +19,18 @@ const register = async (req, res) => {
     throw new HttpError(409, "Email already in use");
   }
   const hashPassword = await bcrypt.hash(password, 10);
-  const newUser = await User.create({ ...req.body, password: hashPassword });
+  const avatarURL = gravatar.url(email, { s: "200", d: "mp" });
+  const newUser = await User.create({
+    ...req.body,
+    password: hashPassword,
+    avatarURL,
+  });
 
-  res
-    .status(201)
-    .json({ email: newUser.email, subscription: newUser.subscription });
+  res.status(201).json({
+    email: newUser.email,
+    subscription: newUser.subscription,
+    avatarURL: newUser.avatarURL,
+  });
 };
 
 const login = async (req, res) => {
@@ -62,9 +76,41 @@ const logout = async (req, res) => {
 const changeSubscription = async (req, res) => {
   const { _id } = req.user;
   const { subscription } = req.body;
-  await User.findByIdAndUpdate(_id, subscription);
+  await User.findByIdAndUpdate(_id, { subscription });
   res.json({
     message: `Your subscription has been changed to ${subscription}`,
+  });
+};
+
+const updateAvatarURL = async (req, res) => {
+  const { _id } = req.user;
+  const { path: tmpUpload, originalname } = req.file;
+  const filename = `${_id}_${originalname}`;
+
+  const fileExtension = originalname.substring(
+    originalname.lastIndexOf(".") + 1
+  );
+  if (!avatarExtensions.includes(fileExtension.toLowerCase())) {
+    throw new HttpError(
+      400,
+      `${originalname} includes an invalid file extension! Must be: ${avatarExtensions.join(
+        ", "
+      )}`
+    );
+  }
+
+  const resultUpload = path.join(avatarsDir, filename);
+
+  const img = await jimp.read(tmpUpload);
+  img.resize(250, 250).quality(90).write(resultUpload);
+  await fs.unlink(tmpUpload);
+
+  const avatarURL = path.join("avatars", filename);
+
+  await User.findByIdAndUpdate(_id, { avatarURL });
+
+  res.json({
+    avatarURL,
   });
 };
 
@@ -74,4 +120,5 @@ module.exports = {
   getCurrent: ctrlWrapper(getCurrent),
   logout: ctrlWrapper(logout),
   changeSubscription: ctrlWrapper(changeSubscription),
+  updateAvatarURL: ctrlWrapper(updateAvatarURL),
 };
