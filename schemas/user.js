@@ -9,9 +9,14 @@ const subscriptionSchema = Joi.object({
   subscription: Joi.string().valid("starter", "pro", "business").required(),
 });
 
+const emailSchema = Joi.object({
+  email: Joi.string().email().required(),
+});
+
 const schema = {
   registerSchema,
   subscriptionSchema,
+  emailSchema,
 };
 
 module.exports = schema;
